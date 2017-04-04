@@ -24,10 +24,10 @@ def load_mnist(path, kind='train'):
 X_train, y_train = load_mnist('data', kind='train')
 X_test, y_test = load_mnist('data', kind='t10k')
 
-np.savetxt('train_img.csv', X_train, fmt='%i', delimiter=',')
-np.savetxt('train_labels.csv', y_train, fmt='%i', delimiter=',')
-np.savetxt('test_img.csv', X_test, fmt='%i', delimiter=',')
-np.savetxt('test_labels.csv', y_test, fmt='%i', delimiter=',')
+np.savetxt('./data/train_img.csv', X_train, fmt='%i', delimiter=',')
+np.savetxt('./data/train_labels.csv', y_train, fmt='%i', delimiter=',')
+np.savetxt('./data/test_img.csv', X_test, fmt='%i', delimiter=',')
+np.savetxt('./data/test_labels.csv', y_test, fmt='%i', delimiter=',')
 
 fig, ax = plt.subplots(nrows=2, ncols=5, sharex=True)
 
