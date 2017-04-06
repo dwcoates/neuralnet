@@ -10,7 +10,7 @@ class NeuralNetMLP(object):
         self.n_output = n_output
         self.n_features = n_features
         self.n_hidden = n_hidden
-        self.w1, self.d2 = self._initialize_weights()
+        self.w1, self.w2 = self._initialize_weights()
         self.l1 = l1
         self.l2 = l2
         self.epochs = epochs
@@ -21,7 +21,7 @@ class NeuralNetMLP(object):
         self.minibatches = minibatches
 
     def _encode_labels(self, y, k):
-        onehot = np.zeros((x, y.shape[0]))
+        onehot = np.zeros((k, y.shape[0]))
         for idx, val in enumerate(y):
             onehot[val, idx] = 1.0
         return onehot
@@ -38,7 +38,15 @@ class NeuralNetMLP(object):
         return w1, w2
 
     def _sigmoid(self, z):
-        return expit(z)
+        def funct(x):
+            if x >= 500:
+                return 1.0
+            if x <= -500:
+                return -1.0
+
+            return expit(x)
+        v = np.vectorize(funct)
+        v(z)
 
     def _sigmoid_gradient(self, z):
         """
@@ -56,7 +64,6 @@ class NeuralNetMLP(object):
             X_new[1:, :] = X
         else:
             raise AttributeError("`how` must be `column` or `row`")
-
         return X_new
 
     def _feedforward(self, X, w1, w2):
@@ -66,6 +73,16 @@ class NeuralNetMLP(object):
         a2 = self._add_bias_unit(a2, how='row')
         z3 = w2.dot(a2)
         a3 = self._sigmoid(z3)
+
+        if any([np.isnan(x).any() for x in [a1, z2, a2, z3, a3]]):
+            raise ValueError(("feedforward produced bad results:\na1 nulls: {}\nz2:" +
+                              " {}\na2 nulls: {:,}\n z3: {}\na3 nulls: {:,}").format(
+                                  np.isnan(a1).sum(),
+                                  np.isnan(z2).sum(),
+                                  np.isnan(a2).sum(),
+                                  np.isnan(z3).sum(),
+                                  np.isnan(a3).sum()))
+
         return a1, z2, a2, z3, a3
 
     def _L2_reg(self, lambda_, w1, w2):
@@ -73,15 +90,23 @@ class NeuralNetMLP(object):
                                 + np.sum(w2[:, 1:]).sum())
 
     def _L1_reg(self, lambda_, w1, w2):
-        return (lambda_/2.0) * (np.sum(w1[:, 1:])).sum() \
-            + np.abs(w2[:, 1:]).sum()
+        return (lambda_/2.0) * (np.abs(w1[:, 1:]).sum() \
+            + np.abs(w2[:, 1:]).sum())
 
-    def _get_cost(sef, y_enc, output, w1, w2):
+    def _get_cost(self, y_enc, output, w1, w2):
         term1 = -y_enc * (np.log(output))
         term2 = (1 - y_enc) * np.log(1 - output)
         cost = np.sum(term1 - term2)
         L1_term  = self._L1_reg(self.l1, w1, w2)
         L2_term = self._L2_reg(self.l2, w1, w2)
+
+        ### if np.isnan(L1_term).sum() > 0:
+        ###     raise ValueError("L1 crapped out")
+
+        if np.isnan(L2_term):
+            print (self.l2, w1, w2)
+            raise ValueError("L2 crapped out again")
+
         cost = cost + L1_term + L2_term
 
         return cost
@@ -95,6 +120,12 @@ class NeuralNetMLP(object):
         grad2 = sigma3.dot(a2.T)
 
         grad1[:, 1:] += (w1[:, 1:] * (self.l1 + self.l2))
+        grad2[:, 1:] += (w2[:, 1:] * (self.l1 + self.l2))
+
+        if np.isnan(grad1).any() or np.isnan(grad2).any():
+            raise ValueError("grad1 or grad2 are bad:\ngrad1: {}\ngrad2: {}".format(
+                np.isnan(grad1).sum(), np.isnan(grad2).sum()))
+
         return grad1, grad2
 
     def predict(self, X):
@@ -116,7 +147,7 @@ class NeuralNetMLP(object):
             if print_progress:
                 sys.stderr.write(
                 '\rEpoch: {}/{}'.format(i+1, self.epochs))
-                sts.stderr.flush()
+                sys.stderr.flush()
 
             if self.shuffle:
                 idx = np.random.permutation(y_data.shape[0])
@@ -126,25 +157,100 @@ class NeuralNetMLP(object):
 
             for idx in mini:
                 a1, z2, a2, z3, a3 = self._feedforward(
-                    X_data[idx], self.w1, self.w2)
-                cost = self._get_cost(y_enc = y_enc[:, idx],
-                                      output = a3,
-                                      w1 = self.w1,
-                                      w2 = self.w2)
-                self.cost_.append(cost)
+                        X_data[idx], self.w1, self.w2)
+                try:
+                    cost = self._get_cost(y_enc = y_enc[:, idx],
+                                        output = a3,
+                                        w1 = self.w1,
+                                        w2 = self.w2)
+                    self.cost_.append(cost)
 
-                grad1, grad2 = self._get_gradient(a1 = a1,
-                                            a2 = a2,
-                                            a3 = a3,
-                                            z2 = z2,
-                                            y_enc = y_enc[:, idx],
-                                            w1 = self.w1,
-                                            w2 = self.w2)
+                    grad1, grad2 = self._get_gradient(a1 = a1,
+                                                a2 = a2,
+                                                a3 = a3,
+                                                z2 = z2,
+                                                y_enc = y_enc[:, idx],
+                                                w1 = self.w1,
+                                                w2 = self.w2)
+                except ValueError as ex:
+                    print "\nERROR: Failed on {:,}th epoch".format(i)
+                    print ex.args
+                    raise ex
 
                 delta_w1, delta_w2 = self.eta * grad1, self.eta * grad2
                 self.w1 -= (delta_w1 + (self.alpha * delta_w1_prev))
                 self.w2 -= (delta_w2 + (self.alpha * delta_w2_prev))
 
-                delta_w1_prev, delta_w2_prev = delta_w2, delta_w2
+                delta_w1_prev, delta_w2_prev = delta_w1, delta_w2
 
         return self
+
+
+
+
+nn = NeuralNetMLP(n_output = 10,
+                  n_features = X_train.shape[1],
+                  n_hidden = 50,
+                  l2=0.1,
+                  l1=0.0,
+                  epochs = 1000,
+                  eta = 0.001,
+                  alpha = 0.001,
+                  decrease_const = 0.00001,
+                  shuffle=True,
+                  minibatches=50,
+                  random_state=1)
+
+X = X_train.copy()
+y = y_train.copy()
+
+nn.cost_ = []
+X_data, y_data = X.copy(), y.copy()
+y_enc = nn._encode_labels(y, nn.n_output)
+
+delta_w1_prev= np.zeros(nn.w1.shape)
+delta_w2_prev = np.zeros(nn.w2.shape)
+
+if nn.shuffle:
+    idx = np.random.permutation(y_data.shape[0])
+    X_data, y_enc = X_data[idx], y_enc[:, idx]
+
+mini= np.array_split(range(y_data.shape[0]), nn.minibatches)
+
+a1, z2, a2, z3, a3 = nn._feedforward(
+    X_data[idx], nn.w1, nn.w2)
+
+try:
+    cost = nn._get_cost(y_enc = y_enc[:, idx],
+                            output = a3,
+                            w1 = nn.w1, w2 = nn.w2)
+    nn.cost_.append(cost)
+
+    grad1,grad2 = nn._get_gradient(a1 = a1,
+                                       a2 = a2,
+                                       a3 = a3,
+                                       z2 = z2,
+                                       y_enc = y_enc[:, idx],
+                                       w1 = nn.w1,
+                                       w2 = nn.w2)
+except ValueError as ex:
+    print "\nERROR: Failed on {:,}th epoch".format(i)
+    print ex.args
+    raise ex
+
+delta_w1,delta_w2 = nn.eta * grad1, nn.eta * grad2
+nn.w1 -= (delta_w1 + (nn.alpha * delta_w1_prev))
+nn.w2 -= (delta_w2 + (nn.alpha * delta_w2_prev))
+
+delta_w1_prev,delta_w2_prev = delta_w1, delta_w2
+
+def test(z):
+    def funct(x):
+            if x >= 500:
+                    return 1.0
+            if x <= -500:
+                    return -1.0
+
+            return expit(x)
+    v = np.vectorize(funct)
+    return v(z)

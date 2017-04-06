@@ -40,7 +40,8 @@ ax[0].set_yticks([])
 plt.tight_layout()
 plt.show()
 
-X_train = np.genfromtxt('train_img.csv', dtype=int, delimiter=',')
-y_train = np.genfromtxt('train_labels.csv', dtype=int, delimiter=',')
-X_test = np.genfromtxt('test_img.csv', dtype=int, delimiter=',')
-y_train = np.genfromtxt('test_labels.csv', dtype=int, delimiter=',')
+X_train = np.genfromtxt('./data/train_img.csv', dtype=int, delimiter=',')
+y_train = np.genfromtxt('./data/train_labels.csv', dtype=int, delimiter=',')
+X_test = np.genfromtxt('./data/test_img.csv', dtype=int, delimiter=',')
+y_train = np.genfromtxt('./data/test_labels.csv', dtype=int, delimiter=',')
+print "done."
